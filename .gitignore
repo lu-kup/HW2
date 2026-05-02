@@ -1,2 +1,5 @@
 references/*
 raw_data/*
+reads_trimmed/*
+outputs/*.bam
+outputs/*.sam
