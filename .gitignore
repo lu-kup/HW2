@@ -3,3 +3,6 @@ raw_data/*
 reads_trimmed/*
 outputs/*.bam
 outputs/*.sam
+outputs/*_dedp_CpG.bedGraph
+outputs/*.bam.bai
+script2.sh

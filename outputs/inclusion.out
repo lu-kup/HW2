@@ -1,0 +1,12 @@
+[E::idx_find_and_load] Could not retrieve index file for 'outputs/SRR11647649_dedp.bam'
+Couldn't load the index for outputs/SRR11647649_dedp.bam, will attempt to build it.
+Suggested inclusion options: --OT 2,0,2,111 --OB 2,124,14,124
+[E::idx_find_and_load] Could not retrieve index file for 'outputs/SRR11647651_dedp.bam'
+Couldn't load the index for outputs/SRR11647651_dedp.bam, will attempt to build it.
+Suggested inclusion options: --OT 2,0,2,112 --OB 2,124,13,124
+[E::idx_find_and_load] Could not retrieve index file for 'outputs/SRR11647659_dedp.bam'
+Couldn't load the index for outputs/SRR11647659_dedp.bam, will attempt to build it.
+Suggested inclusion options: --OT 3,0,2,120 --OB 2,123,5,124
+[E::idx_find_and_load] Could not retrieve index file for 'outputs/SRR11647661_dedp.bam'
+Couldn't load the index for outputs/SRR11647661_dedp.bam, will attempt to build it.
+Suggested inclusion options: --OT 6,0,2,112 --OB 2,123,13,124
