@@ -164,3 +164,53 @@ ggsave(
   width = 12,
   height = 8
 )
+
+# Multiple PCA
+run_pca <- function(cov_dt, meth_dt, min_cov) {
+  keep_cpgs <- cov_dt %>%
+    filter(if_all(where(is.numeric), ~ .x >= min_cov)) %>%
+    pull(cpg_id)
+
+  print(sprintf("Min coverage level: %s | CpGs: %d", min_cov, length(keep_cpgs)))
+
+  mat <- meth_dt %>%
+    filter(cpg_id %in% keep_cpgs) %>%
+    select(where(is.numeric)) %>%
+    select(-position) %>%
+    as.matrix()
+
+  mat_t <- t(mat)
+  mat_clean <- mat_t[, apply(mat_t, 2, function(x) all(is.finite(x)))]
+
+  pca <- prcomp(mat_clean, center = TRUE, scale. = FALSE)
+
+  data.frame(
+    Sample = rownames(pca$x),
+    PC1 = pca$x[,1],
+    PC2 = pca$x[,2],
+    Coverage = paste0(">=", min_cov, "x")
+  )
+}
+
+pca_1  <- run_pca(coverage_dt, methylation_dt, 1)
+pca_5  <- run_pca(coverage_dt, methylation_dt, 5)
+pca_15 <- run_pca(coverage_dt, methylation_dt, 15)
+pca_20 <- run_pca(coverage_dt, methylation_dt, 20)
+
+pca_all <- bind_rows(pca_1, pca_5, pca_15, pca_20)
+
+pca_all$Group <- ifelse(grepl("healthy", pca_all$Sample), "Healthy", "Tumor")
+pca_all$Tissue <- ifelse(grepl("R2", pca_all$Sample), "R2", ifelse(grepl("R7", pca_all$Sample), "R7", NA))
+
+p5 <- ggplot(pca_all, aes(PC1, PC2, color = Group, shape = Tissue)) +
+  geom_point(size = 3) +
+  scale_shape_manual(values = c(R2 = 16, R7 = 17)) +
+  facet_wrap(~Coverage) +
+  theme_bw() +
+  labs(
+    title = "Effect of Coverage Filtering on PCA Clustering",
+    x = "PC1",
+    y = "PC2"
+  )
+
+ggsave("diagrams/pca_filter_comparison.png", p5, width = 12, height = 6)
