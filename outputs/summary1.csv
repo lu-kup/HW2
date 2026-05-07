@@ -1,0 +1,8 @@
+"   cpg_id","    chr","   position","T1_healthy_R2","T1_healthy_R7"," T1_tumor_R2"," T1_tumor_R7"
+"Length:1472739    ","Length:1472739    ","Min.   :   60008  ","Min.   :   1.00  ","Min.   :   1.000  ","Min.   :   1.000  ","Min.   :   1.000  "
+"Class :character  ","Class :character  ","1st Qu.:20123032  ","1st Qu.:   5.00  ","1st Qu.:   5.000  ","1st Qu.:   6.000  ","1st Qu.:   6.000  "
+"Mode  :character  ","Mode  :character  ","Median :37822391  ","Median :   8.00  ","Median :   7.000  ","Median :   9.000  ","Median :   9.000  "
+NA,NA,"Mean   :36328807  ","Mean   :   8.34  ","Mean   :   7.885  ","Mean   :   9.822  ","Mean   :   9.128  "
+NA,NA,"3rd Qu.:53171148  ","3rd Qu.:  11.00  ","3rd Qu.:  10.000  ","3rd Qu.:  13.000  ","3rd Qu.:  12.000  "
+NA,NA,"Max.   :64334160  ","Max.   :4430.00  ","Max.   :4972.000  ","Max.   :5023.000  ","Max.   :5773.000  "
+NA,NA,NA,"NA's   :18325  ","NA's   :22882  ","NA's   :12577  ","NA's   :16705  "
