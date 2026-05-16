@@ -1,0 +1,6 @@
+INFO [2026-05-16 22:07:17] $x
+INFO [2026-05-16 22:07:17] list(Beta_binomial = beta_binomial_sites, Wilcoxon = wilcox_sites)
+INFO [2026-05-16 22:07:17] 
+INFO [2026-05-16 22:07:17] $filename
+INFO [2026-05-16 22:07:17] paste0(outdatadir, "BetaBin_vs_Wilcoxon_venn.tif")
+INFO [2026-05-16 22:07:17] 

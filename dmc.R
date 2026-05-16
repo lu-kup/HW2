@@ -1,9 +1,9 @@
 library(pacman)
-p_load(data.table, bsseq, ggplot2, DSS, data.table, annotatr, GenomicRanges, TxDb.Hsapiens.UCSC.hg19.knownGene, org.Hs.eg.db, pheatmap)
+p_load(data.table, bsseq, ggplot2, DSS, data.table, annotatr, GenomicRanges, TxDb.Hsapiens.UCSC.hg38.knownGene, org.Hs.eg.db, pheatmap)
 options(scipen=999)
 outdatadir <- "./outputs/"
 
-# MAIN SCRIPT
+# Identification script
 sample_info <- readRDS("outputs/sample_info.RDS")  
 setDT(sample_info)
 
@@ -91,15 +91,9 @@ dim(dmlTest)
 dim(dmcs_delta_dt)
 dim(dmcs_fdr_dt)
 
-# https://chatgpt.com/c/6a072a96-7a48-8332-9389-38c3552a3389
-
 # =========================================================
 # 4. DSS vs Wilcoxon comparison
 # =========================================================
-
-# ---------------------------------------------------------
-# Wilcoxon test on chr1
-# ---------------------------------------------------------
 
 meth <- getMeth(BS_filtered, type = "raw")
 
@@ -142,6 +136,7 @@ wilcox_dmcs <- wilcox_dmc_analysis[p_value < 0.5 & abs(diff) > 0.1]
 # =========================================================
 # Create Venn diagram
 # =========================================================
+
 library(VennDiagram)
 
 beta_binomial_sites <- paste(
