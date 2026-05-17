@@ -1,0 +1,7 @@
+"    chr","    start","     end","    length","     nCG","  meanMethy1","  meanMethy2","  diff.Methy","   areaStat"
+"Length:2172       ","Min.   :   72468  ","Min.   :   73711  ","Min.   :   52  ","Min.   : 4.00  ","Min.   :0.06313  ","Min.   :0.06751  ","Min.   :-0.5510  ","Min.   :-19.81  "
+"Class :character  ","1st Qu.:15473098  ","1st Qu.:15473398  ","1st Qu.:  434  ","1st Qu.: 4.00  ","1st Qu.:0.76164  ","1st Qu.:0.30498  ","1st Qu.: 0.4058  ","1st Qu.: 11.97  "
+"Mode  :character  ","Median :22843244  ","Median :22847413  ","Median : 1074  ","Median : 5.00  ","Median :0.81706  ","Median :0.35711  ","Median : 0.4465  ","Median : 14.73  "
+NA,"Mean   :30709692  ","Mean   :30711155  ","Mean   : 1463  ","Mean   : 5.63  ","Mean   :0.80226  ","Mean   :0.36222  ","Mean   : 0.4400  ","Mean   : 16.78  "
+NA,"3rd Qu.:54426838  ","3rd Qu.:54430215  ","3rd Qu.: 2006  ","3rd Qu.: 6.00  ","3rd Qu.:0.86309  ","3rd Qu.:0.41351  ","3rd Qu.: 0.4826  ","3rd Qu.: 19.56  "
+NA,"Max.   :64282298  ","Max.   :64282838  ","Max.   :12127  ","Max.   :26.00  ","Max.   :0.98828  ","Max.   :0.91737  ","Max.   : 0.6662  ","Max.   : 88.01  "
