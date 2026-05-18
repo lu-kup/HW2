@@ -154,10 +154,7 @@ venn.diagram(
     Beta_binomial = beta_binomial_sites,
     Wilcoxon = wilcox_sites
   ),
-  filename = paste0(
-    outdatadir,
-    "BetaBin_vs_Wilcoxon_venn.tif"
-  )
+  filename = "diagrams/BetaBin_vs_Wilcoxon_venn.tif"
 )
 
 # =========================================================
@@ -738,13 +735,43 @@ dmrs_annot_promoters_dt[, annot_type := gsub("hg38_", "", annot.type)]
 dmrs_annot_promoters_dt[, annot_type := gsub("genes_", "", annot_type)]
 dmrs_annot_promoters_dt[, annot_type := gsub("cpg_", "", annot_type)]
 
-dmrs_copy <- copy(dmrs_char)
+txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
+all_genes <- genes(txdb)
+nearest_genes_dmrs <- distanceToNearest(dmrs_gr, all_genes)
+
+dmrs_nearest <- data.table(
+  dmr_index = queryHits(nearest_genes_dmrs),
+  gene_id = names(all_genes)[subjectHits(nearest_genes_dmrs)],
+  distance_to_gene = mcols(nearest_genes_dmrs)$distance
+)
+
+gene_symbols_dmrs <- AnnotationDbi::select(org.Hs.eg.db,
+                      keys = unique(dmrs_nearest$gene_id),
+                      columns = c("SYMBOL", "GENENAME"),
+                      keytype = "ENTREZID")
+
+gene_symbols_dmrs <- as.data.table(gene_symbols_dmrs)
+gene_symbols_dmrs <- gene_symbols_dmrs[!duplicated(ENTREZID)]
+
+dmrs_nearest <- merge(dmrs_nearest, gene_symbols_dmrs, 
+                     by.x = "gene_id", by.y = "ENTREZID",
+                     all.x = TRUE)
+
+setnames(dmrs_nearest, "SYMBOL", "nearest_gene_symbol")
+setnames(dmrs_nearest, "GENENAME", "nearest_gene_name")
+
+dmrs_with_genes <- copy(dmrs_char)
+setDT(dmrs_with_genes)
+dmrs_with_genes[, dmr_index := 1:.N]
+
+dmrs_with_genes <- merge(dmrs_with_genes, dmrs_nearest,
+                         by = "dmr_index", all.x = TRUE)
 
 # Take the first annotation for each DMC
 dmrs_features_promoters <- dmrs_annot_promoters_dt[, .SD[1], by = .(seqnames, start)]
 setnames(dmrs_features_promoters, c("seqnames"), c("chr"))
 
-dmrs_final_promoters <- merge(dmrs_copy, 
+dmrs_final_promoters <- merge(dmrs_with_genes, 
                    dmrs_features_promoters[, .(chr, start, annot_type)],
                    by = c("chr", "start"), all.x = TRUE)
 
@@ -871,7 +898,6 @@ ggsave(
   height = 6,
   dpi = 300
 )
-
 
 # DMR annotate CGI
 
@@ -1075,3 +1101,226 @@ png(
 
 print(p)
 dev.off()
+
+
+p_load(clusterProfiler)
+
+# Functional enrichment - Hypermethylated DMCs VS hypomethylated DMCs
+
+hyper_genes <- unique(dmcs_final[direction == "Hypermethylated", gene_id])
+hyper_genes <- hyper_genes[!is.na(hyper_genes)]
+
+hypo_genes <- unique(dmcs_final[direction == "Hypomethylated", gene_id])
+hypo_genes <- hypo_genes[!is.na(hypo_genes)]
+
+# GO Enrichment Analysis
+
+go_hyper <- enrichGO(gene = hyper_genes,
+                  OrgDb = org.Hs.eg.db,
+                  keyType = "ENTREZID",
+                  ont = "BP",
+                  pAdjustMethod = "BH",
+                  pvalueCutoff = 0.05,
+                  qvalueCutoff = 0.2,
+                  readable = TRUE)
+
+png("diagrams/hyper_go_barplot.png", width = 1000, height = 800)
+barplot(go_hyper, showCategory = 20, title = "Hypermethylated CpG - Top GO terms")
+dev.off()
+
+png("diagrams/hyper_go_dotplot.png", width = 1000, height = 800)
+dotplot(go_hyper, showCategory = 20, title = "Hypermethylated CpG - GO Enrichment Dotplot")
+dev.off()
+
+go_hypo <- enrichGO(gene = hypo_genes,
+                  OrgDb = org.Hs.eg.db,
+                  keyType = "ENTREZID",
+                  ont = "BP",
+                  pAdjustMethod = "BH",
+                  pvalueCutoff = 0.05,
+                  qvalueCutoff = 0.2,
+                  readable = TRUE)
+
+png("diagrams/hypo_go_barplot.png", width = 1000, height = 800)
+barplot(go_hypo, showCategory = 20, title = "Hypomethylated CpG - Top GO terms")
+dev.off()
+
+png("diagrams/hypo_go_dotplot.png", width = 1000, height = 800)
+dotplot(go_hypo, showCategory = 20, title = "Hypomethylated CpG - GO Enrichment Dotplot")
+dev.off()
+
+# KEGG Enrichment Analysis
+
+kegg_hyper <- enrichKEGG(gene = hyper_genes,
+                   organism = "hsa",
+                   pAdjustMethod = "BH",
+                   pvalueCutoff = 0.05,
+                   qvalueCutoff = 0.2)
+
+p <- barplot(kegg_hyper, showCategory = 20, title = "Hypermethylated CpG - Top KEGG terms")
+
+ggsave(
+  "diagrams/hyper_kegg_barplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+p <- dotplot(kegg_hyper, showCategory = 20, title = "Hypermethylated CpG - KEGG Enrichment Dotplot")
+
+ggsave(
+  "diagrams/hyper_kegg_dotplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+
+kegg_hypo <- enrichKEGG(gene = hypo_genes,
+                   organism = "hsa",
+                   pAdjustMethod = "BH",
+                   pvalueCutoff = 0.05,
+                   qvalueCutoff = 0.2)
+
+p <- barplot(kegg_hypo, showCategory = 20, title = "Hypomethylated CpG - Top KEGG terms")
+
+ggsave(
+  "diagrams/hypo_kegg_barplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+p <- dotplot(kegg_hypo, showCategory = 20, title = "Hypomethylated CpG - KEGG Enrichment Dotplot")
+
+ggsave(
+  "diagrams/hypo_kegg_dotplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+
+# Functional enrichment - Promoter DMRs VS All DMRs
+
+promoter_dmrs <- dmrs_final_promoters[grepl("promoter", annot_type, ignore.case = TRUE)]
+promoter_genes <- unique(promoter_dmrs$gene_id)
+promoter_genes <- promoter_genes[!is.na(promoter_genes)]
+
+all_genes <- unique(dmrs_final_promoters$gene_id)
+all_genes <- all_genes[!is.na(all_genes)]
+
+# GO Enrichment Analysis
+
+go_promoter <- enrichGO(gene = promoter_genes,
+                  OrgDb = org.Hs.eg.db,
+                  keyType = "ENTREZID",
+                  ont = "BP",
+                  pAdjustMethod = "BH",
+                  pvalueCutoff = 0.05,
+                  qvalueCutoff = 0.2,
+                  readable = TRUE)
+
+p <- barplot(go_hyper, showCategory = 20, title = "Promoter DMR associated genes - Top GO terms")
+ggsave(
+  "diagrams/promoter_go_barplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+p <- dotplot(go_hyper, showCategory = 20, title = "Promoter DMR associated genes - GO Enrichment Dotplot")
+ggsave(
+  "diagrams/promoter_go_dotplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+go_all <- enrichGO(gene = all_genes,
+                  OrgDb = org.Hs.eg.db,
+                  keyType = "ENTREZID",
+                  ont = "BP",
+                  pAdjustMethod = "BH",
+                  pvalueCutoff = 0.05,
+                  qvalueCutoff = 0.2,
+                  readable = TRUE)
+
+barplot(go_all, showCategory = 20, title = "All DMR associated genes - Top GO terms")
+ggsave(
+  "diagrams/all_go_barplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+dotplot(go_all, showCategory = 20, title = "All DMR associated genes - GO Enrichment Dotplot")
+ggsave(
+  "diagrams/all_go_dotplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+# KEGG Enrichment Analysis
+
+kegg_promoter <- enrichKEGG(gene = promoter_genes,
+                   organism = "hsa",
+                   pAdjustMethod = "BH",
+                   pvalueCutoff = 0.05,
+                   qvalueCutoff = 0.2)
+
+p <- barplot(kegg_promoter, showCategory = 20, title = "Promoter DMR associated genes - Top KEGG terms")
+
+ggsave(
+  "diagrams/promoter_kegg_barplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+p <- dotplot(kegg_promoter, showCategory = 20, title = "Promoter DMR associated genes - KEGG Enrichment Dotplot")
+
+ggsave(
+  "diagrams/promoter_kegg_dotplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+
+kegg_all <- enrichKEGG(gene = all_genes,
+                   organism = "hsa",
+                   pAdjustMethod = "BH",
+                   pvalueCutoff = 0.05,
+                   qvalueCutoff = 0.2)
+
+p <- barplot(kegg_all, showCategory = 20, title = "All DMR associated genes - Top KEGG terms")
+
+ggsave(
+  "diagrams/all_kegg_barplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+p <- dotplot(kegg_all, showCategory = 20, title = "All DMR associated genes - KEGG Enrichment Dotplot")
+
+ggsave(
+  "diagrams/all_kegg_dotplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
