@@ -78,14 +78,14 @@ dmcs_delta <- callDML(dmlTest,
                 delta = 0.1)
 # Summary
 dmcs_delta_dt <- as.data.table(dmcs_delta)
-n_hyper_delta <- sum(dmcs_delta_dt$diff > 0)
-n_hypo_delta <- sum(dmcs_delta_dt$diff < 0)
+n_hypo_delta <- sum(dmcs_delta_dt$diff > 0)
+n_hyper_delta <- sum(dmcs_delta_dt$diff < 0)
 
 
 dmcs_fdr <- dmlTest[dmlTest$fdr < 0.05, ]
 dmcs_fdr_dt <- as.data.table(dmcs_fdr)
-n_hyper_fdr <- sum(dmcs_fdr_dt$diff > 0)
-n_hypo_fdr <- sum(dmcs_fdr_dt$diff < 0)
+n_hypo_fdr <- sum(dmcs_fdr_dt$diff > 0)
+n_hyper_fdr <- sum(dmcs_fdr_dt$diff < 0)
 
 dim(dmlTest)
 dim(dmcs_delta_dt)
@@ -317,7 +317,7 @@ dmcs_final <- merge(dmcs_with_genes,
                    dmcs_features[, .(chr, pos, annot_type)],
                    by = c("chr", "pos"), all.x = TRUE)
 
-dmcs_final[, direction := ifelse(diff > 0, "Hypermethylated", "Hypomethylated")]
+dmcs_final[, direction := ifelse(diff < 0, "Hypermethylated", "Hypomethylated")]
 
 # Reorder columns
 setcolorder(dmcs_final, c("chr", "pos", "diff", "pval", "fdr", "stat",
@@ -341,6 +341,137 @@ write.csv(
   file = "outputs/dmcs_final_summary.csv",
   row.names = FALSE
 )
+
+# Enrichment
+
+feature_counts <- dmcs_final[, .N, by = annot_type]
+feature_counts[, percentage := 100 * N / sum(N)]
+
+dmcs_final[, feature_category := fcase(
+  grepl("promoter", annot_type, ignore.case = TRUE), "Promoters",
+  default = "Other"
+)]
+
+feature_summary <- dmcs_final[, .N, by = feature_category]
+feature_summary[, percentage := 100 * N / sum(N)]
+
+all_cpgs <- BS_filtered
+all_cpgs_gr <- granges(all_cpgs)
+
+background_annotated <- annotate_regions(
+  regions = all_cpgs_gr,
+  annotations = annotations,
+  ignore.strand = TRUE,
+  quiet = TRUE
+)
+
+background_dt <- as.data.table(background_annotated)
+background_dt[, annot_type := gsub("hg19_", "", annot.type)]
+background_dt[, annot_type := gsub("genes_", "", annot_type)]
+
+background_features <- background_dt[, .SD[1], by = .(seqnames, start)]
+setnames(background_features, c("seqnames", "start"), c("chr", "pos"))
+
+all_cpgs_dt <- data.table(
+  chr = as.character(seqnames(BS_filtered)),
+  pos = start(BS_filtered)
+)
+
+background_final <- merge(all_cpgs_dt, 
+                   background_features[, .(chr, pos, annot_type)],
+                   by = c("chr", "pos"), all.x = TRUE)
+
+background_final[, feature_category := fcase(
+  grepl("promoter", annot_type, ignore.case = TRUE), "Promoters",
+  default = "Other"
+)]
+
+background_summary <- background_final[, .N, by = feature_category]
+background_summary[, bg_percentage := 100 * N / sum(N)]
+
+# Merge and calculate enrichment
+enrichment_table <- merge(feature_summary, 
+                         background_summary[, .(feature_category, bg_percentage)],
+                         by = "feature_category")
+
+enrichment_table[, enrichment := percentage / bg_percentage]
+enrichment_table[, log2_enrichment := log2(enrichment)]
+
+# Diagrams
+
+ggplot(feature_summary, aes(x = reorder(feature_category, -percentage), 
+                                   y = percentage)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = paste0(round(percentage, 1), "%")), 
+            vjust = -0.5, size = 3.5) +
+  labs(title = "DMC Distribution across Genomic Features",
+       x = "Genomic Feature",
+       y = "Percentage of DMCs (%)") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(
+  filename = "diagrams/dmc_genomic_features.png",
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
+
+ggplot(enrichment_table, aes(x = reorder(feature_category, enrichment), 
+                                    y = enrichment)) +
+  geom_bar(stat = "identity", aes(fill = enrichment > 1)) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "black") +
+  scale_fill_manual(values = c("TRUE" = "#E64B35", "FALSE" = "#4DBBD5"),
+                    labels = c("Depleted", "Enriched")) +
+  geom_text(aes(label = round(enrichment, 2)), hjust = -0.2, size = 3.5) +
+  coord_flip() +
+  labs(title = "DMC Enrichment in Genomic Features",
+       x = "Genomic Feature",
+       y = "Enrichment (Observed / Expected)",
+       fill = "") +
+  theme_bw() +
+  theme(legend.position = "top")
+
+ggsave(
+  filename = "diagrams/dmc_enrichment.png",
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
+
+# Features by direction
+
+feature_by_direction <- dmcs_final[, .N, by = .(feature_category, direction)]
+
+feature_by_direction[, total := sum(N), by = direction]
+feature_by_direction[, percentage := 100 * N / total]
+
+
+ggplot(feature_by_direction, aes(x = feature_category, y = percentage, 
+                                        fill = direction)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("Hypermethylated" = "#E64B35",
+                               "Hypomethylated" = "#4DBBD5")) +
+  geom_text(aes(label = paste0(round(percentage, 1), "%")),
+            position = position_dodge(width = 0.9),
+            vjust = -0.5, size = 3) +
+  labs(title = "Genomic Feature Preferences: Hyper vs Hypo DMCs",
+       x = "Genomic Feature",
+       y = "Percentage of DMCs (%)",
+       fill = "Direction") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "top")
+
+ggsave(
+  filename = "diagrams/dmc_feature_by_direction.png",
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
 
 # Volcano plot
 
@@ -420,19 +551,19 @@ write.csv(
 
 library(dplyr)
 
-dmrs_char <- dmrs2 %>%
+dmrs_char_strict <- dmrs2 %>%
   mutate(
     diff = meanMethy1 - meanMethy2,
-    direction = ifelse(diff > 0,
+    direction = ifelse(diff < 0,
                        "Hypermethylated",
                        "Hypomethylated"),
     abs_diff = abs(diff)
   )
 
-dmrs_char_relaxed <- dmrs %>%
+dmrs_char <- dmrs %>%
   mutate(
     diff = meanMethy1 - meanMethy2,
-    direction = ifelse(diff > 0,
+    direction = ifelse(diff < 0,
                        "Hypermethylated",
                        "Hypomethylated"),
     abs_diff = abs(diff)
@@ -468,7 +599,7 @@ ggplot(dmrs_char, aes(x = nCG)) +
 ggsave("diagrams/dmr_cpg_distribution.png", width = 7, height = 5, dpi = 300)
 
 
-ggplot(dmrs_char, aes(x = direction, fill = direction)) +
+ggplot(dmrs_char_strict, aes(x = direction, fill = direction)) +
   geom_bar() +
   labs(
     title = "Hypermethylated vs Hypo (minCG = 5, minlen = 100, p = 0.01)",
@@ -477,13 +608,13 @@ ggplot(dmrs_char, aes(x = direction, fill = direction)) +
   ) +
   theme_bw()
 
-ggsave("diagrams/hyper_vs_hypo_dmrs.png",
+ggsave("diagrams/hyper_vs_hypo_dmrs_strict.png",
        width = 6,
        height = 5,
        dpi = 300)
 
 
-ggplot(dmrs_char_relaxed, aes(x = direction, fill = direction)) +
+ggplot(dmrs_char, aes(x = direction, fill = direction)) +
   geom_bar() +
   labs(
     title = "Hypermethylated vs Hypo (minCG = 3, minlen = 50, p = 0.05)",
@@ -492,7 +623,7 @@ ggplot(dmrs_char_relaxed, aes(x = direction, fill = direction)) +
   ) +
   theme_bw()
 
-ggsave("diagrams/hyper_vs_hypo_dmrs_relaxed.png",
+ggsave("diagrams/hyper_vs_hypo_dmrs.png",
        width = 6,
        height = 5,
        dpi = 300)
@@ -529,7 +660,7 @@ ggsave("diagrams/dmr_length_vs_effect.png",
        height = 5,
        dpi = 300)
 
-saveRDS(dmrs_char, paste0(outdatadir, "dmcs_char.RDS"))
+saveRDS(dmrs_char, paste0(outdatadir, "dmrs_char.RDS"))
 
 # Compare DMCs and DMRs
 
@@ -579,13 +710,13 @@ ggsave("diagrams/fraction_dmcs_inside_dmrs.png",
        height = 5,
        dpi = 300)
 
-# DMR annotation
+# DMR annotate promoters
 
-if(!file.exists(paste0(outdatadir, "annotation_hg38_promoters_cgi.RDS"))) {
-  annots_promoters_cgi <- c('hg38_genes_promoters', 'hg38_cpg_islands')
-  annotations_promoters_cgi <- build_annotations(genome = 'hg38', annotations = annots_promoters_cgi)
-  saveRDS(annotations_promoters_cgi, paste0(outdatadir, "annotation_hg38_promoters_cgi.RDS")) } else {
-  annotations_promoters_cgi <- readRDS(paste0(outdatadir, "annotation_hg38_promoters_cgi.RDS"))
+if(!file.exists(paste0(outdatadir, "annotation_hg38_promoters.RDS"))) {
+  annots_promoters <- c('hg38_genes_promoters')
+  annotations_promoters <- build_annotations(genome = 'hg38', annotations = annots_promoters)
+  saveRDS(annotations_promoters, paste0(outdatadir, "annotation_hg38_promoters.RDS")) } else {
+  annotations_promoters <- readRDS(paste0(outdatadir, "annotation_hg38_promoters.RDS"))
   }
 
 dmrs_gr <- GRanges(
@@ -595,65 +726,148 @@ dmrs_gr <- GRanges(
   nCG = dmrs_char$nCG
 )
 
-dmrs_annotated <- annotate_regions(
+dmrs_annotated_promoters <- annotate_regions(
   regions = dmrs_gr,
-  annotations = annotations_promoters_cgi,
+  annotations = annotations_promoters,
   ignore.strand = TRUE,
   quiet = FALSE
 )
 
-dmrs_annot_dt <- as.data.table(dmrs_annotated)
-dmrs_annot_dt[, annot_type := gsub("hg38_", "", annot.type)]
-dmrs_annot_dt[, annot_type := gsub("genes_", "", annot_type)]
-dmrs_annot_dt[, annot_type := gsub("cpg_", "", annot_type)]
+dmrs_annot_promoters_dt <- as.data.table(dmrs_annotated_promoters)
+dmrs_annot_promoters_dt[, annot_type := gsub("hg38_", "", annot.type)]
+dmrs_annot_promoters_dt[, annot_type := gsub("genes_", "", annot_type)]
+dmrs_annot_promoters_dt[, annot_type := gsub("cpg_", "", annot_type)]
 
-txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
-all_genes <- genes(txdb)
-nearest_genes <- distanceToNearest(dmrs_gr, all_genes)
-
-dmrs_nearest <- data.table(
-  dmr_index = queryHits(nearest_genes),
-  gene_id = names(all_genes)[subjectHits(nearest_genes)],
-  distance_to_gene = mcols(nearest_genes)$distance
-)
-
-gene_symbols <- select(org.Hs.eg.db,
-                      keys = unique(dmrs_nearest$gene_id),
-                      columns = c("SYMBOL", "GENENAME"),
-                      keytype = "ENTREZID")
-
-gene_symbols <- as.data.table(gene_symbols)
-gene_symbols <- gene_symbols[!duplicated(ENTREZID)]
-
-dmrs_nearest <- merge(dmrs_nearest, gene_symbols, 
-                     by.x = "gene_id", by.y = "ENTREZID",
-                     all.x = TRUE)
-
-setnames(dmcs_nearest, "SYMBOL", "nearest_gene_symbol")
-setnames(dmcs_nearest, "GENENAME", "nearest_gene_name")
-
-dmrs_with_genes <- copy(dmrs_delta_dt)
-dmrs_with_genes[, dmr_index := 1:.N]
-
-dmrs_with_genes <- merge(dmrs_with_genes, dmrs_nearest,
-                         by = "dmc_index", all.x = TRUE)
+dmrs_copy <- copy(dmrs_char)
 
 # Take the first annotation for each DMC
-dmrs_features <- dmrs_annot_dt[, .SD[1], by = .(seqnames, start)]
+dmrs_features_promoters <- dmrs_annot_promoters_dt[, .SD[1], by = .(seqnames, start)]
+setnames(dmrs_features_promoters, c("seqnames"), c("chr"))
 
-setnames(dmrs_features, c("seqnames", "start"), c("chr", "pos"))
+dmrs_final_promoters <- merge(dmrs_copy, 
+                   dmrs_features_promoters[, .(chr, start, annot_type)],
+                   by = c("chr", "start"), all.x = TRUE)
 
-dmrs_final <- merge(dmrs_with_genes, 
-                   dmrs_features[, .(chr, pos, annot_type)],
-                   by = c("chr", "pos"), all.x = TRUE)
+saveRDS(dmrs_final_promoters, paste0(outdatadir, "dmrs_annotated_promoters.RDS"))
 
-dmrs_final[, direction := ifelse(diff > 0, "Hypermethylated", "Hypomethylated")]
 
-# Reorder columns
-setcolorder(dmrs_final, c("chr", "pos", "diff", "pval", "fdr", "stat",
-                         "direction", "annot_type", 
-                         "gene_id", "nearest_gene_symbol", "nearest_gene_name",
-                         "distance_to_gene"))
+# DMR Enrichment in promoters
 
-saveRDS(dmrs_annotated, paste0(outdatadir, "dmcs_annotated_granges.RDS"))
-saveRDS(dmcs_final, paste0(outdatadir, "dmcs_final.RDS"))
+setDT(dmrs_final_promoters)
+feature_counts <- dmrs_final_promoters[, .N, by = annot_type]
+feature_counts[, percentage := 100 * N / sum(N)]
+
+dmrs_final_promoters[, feature_category := fcase(
+  grepl("promoter", annot_type, ignore.case = TRUE), "Promoters",
+  default = "Other"
+)]
+
+dmrs_promoters_feature_summary <- dmrs_final_promoters[, .(total_length = sum(length, na.rm = TRUE)), by = feature_category]
+dmrs_promoters_feature_summary[, percentage := 100 * total_length / sum(total_length)]
+
+
+background_promoters_dt <- as.data.table(annotations_promoters)
+background_promoters_dt <- background_promoters_dt[seqnames == "chr20"]
+background_promoters_dt[, annot_type := gsub("hg38_", "", type)]
+background_promoters_dt[, annot_type := gsub("genes_", "", annot_type)]
+background_promoters_dt[, annot_type := gsub("cpg_", "", annot_type)]
+
+
+gr <- granges(BS_filtered)
+cpgs_region_total_length <- max(end(gr)) - min(start(gr))
+background_promoters_total_length <- sum(background_promoters_dt$width)
+background_other_total_length <- cpgs_region_total_length - background_promoters_total_length
+
+background_promoters_summary <- data.table(
+  feature_category = c("Other", "Promoters"),
+  total_length = c(
+    background_other_total_length,
+    background_promoters_total_length
+  )
+)
+
+background_promoters_summary[, bg_percentage := 100 * total_length / sum(total_length)]
+
+# Merge and calculate enrichment
+promoters_enrichment_table <- merge(dmrs_promoters_feature_summary, 
+                         background_promoters_summary[, .(feature_category, bg_percentage)],
+                         by = "feature_category")
+
+promoters_enrichment_table[, enrichment := percentage / bg_percentage]
+promoters_enrichment_table[, log2_enrichment := log2(enrichment)]
+
+
+
+# Diagrams
+
+ggplot(dmrs_promoters_feature_summary, aes(x = reorder(feature_category, -percentage), 
+                                   y = percentage)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = paste0(round(percentage, 1), "%")), 
+            vjust = -0.5, size = 3.5) +
+  labs(title = "DMR Total Length Distribution across Genomic Features",
+       x = "Genomic Feature",
+       y = "Percentage of DMCs (%)") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(
+  filename = "diagrams/dmr_promoters_genomic_features.png",
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
+
+ggplot(promoters_enrichment_table, aes(x = reorder(feature_category, enrichment), 
+                                    y = enrichment)) +
+  geom_bar(stat = "identity", aes(fill = enrichment > 1)) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "black") +
+  scale_fill_manual(values = c("TRUE" = "#E64B35", "FALSE" = "#4DBBD5"),
+                    labels = c("Depleted", "Enriched")) +
+  geom_text(aes(label = round(enrichment, 2)), hjust = -0.2, size = 3.5) +
+  coord_flip() +
+  labs(title = "DMR Enrichment: Promoters vs Other",
+       x = "Genomic Feature",
+       y = "Enrichment (Observed / Expected)",
+       fill = "") +
+  theme_bw() +
+  theme(legend.position = "top")
+
+ggsave(
+  filename = "diagrams/dmr_promoters_enrichment.png",
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
+# Features by direction
+
+feature_by_direction <- dmrs_final_promoters[, .(total_length = sum(length, na.rm = TRUE)), by = .(feature_category, direction)]
+
+feature_by_direction[, total := sum(total_length), by = direction]
+feature_by_direction[, percentage := 100 * total_length / total]
+
+
+ggplot(feature_by_direction, aes(x = feature_category, y = percentage, 
+                                        fill = direction)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("Hypermethylated" = "#E64B35",
+                               "Hypomethylated" = "#4DBBD5")) +
+  geom_text(aes(label = paste0(round(percentage, 1), "%")),
+            position = position_dodge(width = 0.9),
+            vjust = -0.5, size = 3) +
+  labs(title = "Promoter Preferences: Hyper vs Hypo DMCs",
+       x = "Genomic Feature",
+       y = "Percentage of DMCs (%)",
+       fill = "Direction") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "top")
+
+ggsave(
+  filename = "diagrams/dmc_feature_by_direction.png",
+  width = 8,
+  height = 6,
+  dpi = 300
+)
