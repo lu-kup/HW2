@@ -492,7 +492,7 @@ p <- ggplot(volcano_data, aes(x = diff, y = neg_log_fdr, color = direction)) +
   theme(legend.position = "top")
 
 ggsave(
-  filename = "outputs/volcano_plot.png",
+  filename = "diagrams/volcano_plot.png",
   plot = p,
   width = 8,
   height = 6,
@@ -516,7 +516,7 @@ p <- ggplot(ma_data, aes(x = avg_meth, y = diff, color = direction)) +
   theme(legend.position = "top")
 
 ggsave(
-  filename = "outputs/ma_plot.png",
+  filename = "diagrams/ma_plot.png",
   plot = p,
   width = 8,
   height = 6,
@@ -843,13 +843,13 @@ ggsave(
 
 # Features by direction
 
-feature_by_direction <- dmrs_final_promoters[, .(total_length = sum(length, na.rm = TRUE)), by = .(feature_category, direction)]
+promoters_feature_by_direction <- dmrs_final_promoters[, .(total_length = sum(length, na.rm = TRUE)), by = .(feature_category, direction)]
 
-feature_by_direction[, total := sum(total_length), by = direction]
-feature_by_direction[, percentage := 100 * total_length / total]
+promoters_feature_by_direction[, total := sum(total_length), by = direction]
+promoters_feature_by_direction[, percentage := 100 * total_length / total]
 
 
-ggplot(feature_by_direction, aes(x = feature_category, y = percentage, 
+ggplot(promoters_feature_by_direction, aes(x = feature_category, y = percentage, 
                                         fill = direction)) +
   geom_bar(stat = "identity", position = "dodge") +
   scale_fill_manual(values = c("Hypermethylated" = "#E64B35",
@@ -866,8 +866,212 @@ ggplot(feature_by_direction, aes(x = feature_category, y = percentage,
         legend.position = "top")
 
 ggsave(
-  filename = "diagrams/dmc_feature_by_direction.png",
+  filename = "diagrams/dmr_promoters_feature_by_direction.png",
   width = 8,
   height = 6,
   dpi = 300
 )
+
+
+# DMR annotate CGI
+
+if(!file.exists(paste0(outdatadir, "annotation_hg38_cgi.RDS"))) {
+  annots_cgi <- c('hg38_cpg_islands')
+  annotations_cgi <- build_annotations(genome = 'hg38', annotations = annots_cgi)
+  saveRDS(annotations_cgi, paste0(outdatadir, "annotation_hg38_cgi.RDS")) } else {
+  annotations_cgi <- readRDS(paste0(outdatadir, "annotation_hg38_cgi.RDS"))
+  }
+
+dmrs_annotated_cgi <- annotate_regions(
+  regions = dmrs_gr,
+  annotations = annotations_cgi,
+  ignore.strand = TRUE,
+  quiet = FALSE
+)
+
+dmrs_annotated_cgi_dt <- as.data.table(dmrs_annotated_cgi)
+dmrs_annotated_cgi_dt[, annot_type := gsub("hg38_", "", annot.type)]
+dmrs_annotated_cgi_dt[, annot_type := gsub("genes_", "", annot_type)]
+dmrs_annotated_cgi_dt[, annot_type := gsub("cpg_", "", annot_type)]
+
+dmrs_copy <- copy(dmrs_char)
+
+# Take the first annotation for each DMC
+dmrs_features_cgi <- dmrs_annotated_cgi_dt[, .SD[1], by = .(seqnames, start)]
+setnames(dmrs_features_cgi, c("seqnames"), c("chr"))
+
+dmrs_final_cgi <- merge(dmrs_copy, 
+                   dmrs_features_cgi[, .(chr, start, annot_type)],
+                   by = c("chr", "start"), all.x = TRUE)
+
+saveRDS(dmrs_final_cgi, paste0(outdatadir, "dmrs_annotated_cgi.RDS"))
+
+
+
+# DMR Enrichment in CGI
+
+setDT(dmrs_final_cgi)
+feature_counts <- dmrs_final_cgi[, .N, by = annot_type]
+feature_counts[, percentage := 100 * N / sum(N)]
+
+dmrs_final_cgi[, feature_category := fcase(
+  grepl("islands", annot_type, ignore.case = TRUE), "Islands",
+  default = "Other"
+)]
+
+dmrs_cgi_feature_summary <- dmrs_final_cgi[, .(total_length = sum(length, na.rm = TRUE)), by = feature_category]
+dmrs_cgi_feature_summary[, percentage := 100 * total_length / sum(total_length)]
+
+
+background_cgi_dt <- as.data.table(annotations_cgi)
+background_cgi_dt <- background_cgi_dt[seqnames == "chr20"]
+background_cgi_dt[, annot_type := gsub("hg38_", "", type)]
+background_cgi_dt[, annot_type := gsub("genes_", "", annot_type)]
+background_cgi_dt[, annot_type := gsub("cpg_", "", annot_type)]
+
+
+gr <- granges(BS_filtered)
+cpgs_region_total_length <- max(end(gr)) - min(start(gr))
+background_cgi_total_length <- sum(background_cgi_dt$width)
+background_other_total_length <- cpgs_region_total_length - background_cgi_total_length
+
+background_cgi_summary <- data.table(
+  feature_category = c("Other", "Islands"),
+  total_length = c(
+    background_other_total_length,
+    background_cgi_total_length
+  )
+)
+
+background_cgi_summary[, bg_percentage := 100 * total_length / sum(total_length)]
+
+# Merge and calculate enrichment
+cgi_enrichment_table <- merge(dmrs_cgi_feature_summary, 
+                         background_cgi_summary[, .(feature_category, bg_percentage)],
+                         by = "feature_category")
+
+cgi_enrichment_table[, enrichment := percentage / bg_percentage]
+cgi_enrichment_table[, log2_enrichment := log2(enrichment)]
+
+
+# Diagrams
+
+ggplot(dmrs_cgi_feature_summary, aes(x = reorder(feature_category, -percentage), 
+                                   y = percentage)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = paste0(round(percentage, 1), "%")), 
+            vjust = -0.5, size = 3.5) +
+  labs(title = "DMR Total Length Distribution across Genomic Features",
+       x = "Genomic Feature",
+       y = "Percentage of DMCs (%)") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave(
+  filename = "diagrams/dmr_cgi_genomic_features.png",
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
+
+ggplot(cgi_enrichment_table, aes(x = reorder(feature_category, enrichment), 
+                                    y = enrichment)) +
+  geom_bar(stat = "identity", aes(fill = enrichment > 1)) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "black") +
+  scale_fill_manual(values = c("TRUE" = "#E64B35", "FALSE" = "#4DBBD5"),
+                    labels = c("Depleted", "Enriched")) +
+  geom_text(aes(label = round(enrichment, 2)), hjust = -0.2, size = 3.5) +
+  coord_flip() +
+  labs(title = "DMR Enrichment: CGI vs Other",
+       x = "Genomic Feature",
+       y = "Enrichment (Observed / Expected)",
+       fill = "") +
+  theme_bw() +
+  theme(legend.position = "top")
+
+ggsave(
+  filename = "diagrams/dmr_cgi_enrichment.png",
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
+# Features by direction
+
+cgi_feature_by_direction <- dmrs_final_cgi[, .(total_length = sum(length, na.rm = TRUE)), by = .(feature_category, direction)]
+
+cgi_feature_by_direction[, total := sum(total_length), by = direction]
+cgi_feature_by_direction[, percentage := 100 * total_length / total]
+
+ggplot(cgi_feature_by_direction, aes(x = feature_category, y = percentage, 
+                                        fill = direction)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_manual(values = c("Hypermethylated" = "#E64B35",
+                               "Hypomethylated" = "#4DBBD5")) +
+  geom_text(aes(label = paste0(round(percentage, 1), "%")),
+            position = position_dodge(width = 0.9),
+            vjust = -0.5, size = 3) +
+  labs(title = "CGI Preferences: Hyper vs Hypo DMCs",
+       x = "Genomic Feature",
+       y = "Percentage of DMCs (%)",
+       fill = "Direction") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "top")
+
+ggsave(
+  filename = "diagrams/dmr_cgi_feature_by_direction.png",
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
+# Plot 5: Heatmap of topN DMC
+
+dmcs_top100 <- dmcs_final[order(fdr)][1:100]
+dmcs_top100[, cpg_id := paste(chr, pos, sep = ":")]
+
+meth_matrix <- getMeth(BS_filtered, type = "raw", what = "perBase")
+meth_matrix <- as.data.table(meth_matrix)
+
+chr <- as.character(seqnames(BS_filtered))
+pos <- start(BS_filtered)
+meth_matrix$cpg_ids <- paste0(chr, ":", pos)
+top100_meth <- meth_matrix[cpg_ids %in% dmcs_top100$cpg_id, ]
+
+annotation_col <- data.frame(
+  Condition = sample_info$condition,
+  row.names = sample_info$sample_id
+)
+
+ann_colors_col <- list(
+  Condition = c(healthy = "#00A087", tumor = "#DC0000")
+)
+
+p <- pheatmap(top100_meth[, 1:4],
+         annotation_col = annotation_col,
+         annotation_colors = c(ann_colors_col),
+         color = colorRampPalette(c("blue", "white", "red"))(100),
+         breaks = seq(0, 1, length.out = 101),
+         cluster_rows = FALSE,
+         cluster_cols = TRUE,
+         na_col = "gray90",  
+         clustering_distance_rows = "euclidean",
+         clustering_distance_cols = "euclidean",
+         clustering_method = "ward.D2",
+         show_rownames = FALSE,
+         show_colnames = TRUE,
+         fontsize_row = 6,
+         fontsize_col = 8,
+         main = paste("Top", nrow(top100_meth), "DMCs by FDR"))
+
+png(
+  filename = "diagrams/top100_dmc_heatmap.png",
+  width = 2000,
+  height = 2000,
+  res = 300
+)
+
+print(p)
+dev.off()
