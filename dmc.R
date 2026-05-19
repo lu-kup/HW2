@@ -1,5 +1,14 @@
+# ---------------------------------------------------------
+# DMC calling
+# ---------------------------------------------------------
+
+# =========================================================
+# 1. 
+# =========================================================
+
 library(pacman)
-p_load(data.table, bsseq, ggplot2, DSS, data.table, annotatr, GenomicRanges, TxDb.Hsapiens.UCSC.hg38.knownGene, org.Hs.eg.db, pheatmap)
+p_load(data.table, bsseq, ggplot2, DSS, data.table, annotatr,
+  GenomicRanges, TxDb.Hsapiens.UCSC.hg38.knownGene, org.Hs.eg.db, pheatmap)
 options(scipen=999)
 outdatadir <- "./outputs/"
 
@@ -71,25 +80,104 @@ if(!(file.exists(paste0(outdatadir, "dss_dmlTest_result.RDS")))) {
     dmlTest <- readRDS(paste0(outdatadir, "dss_dmlTest_result.RDS"))
 }
 
-# Call DMCs p < 0.05, delta > 0.1)
+# =========================================================
+# 2. 
+# =========================================================
 
+# Call DMCs p < 0.05, delta > 0.1)
 dmcs_delta <- callDML(dmlTest, 
                 p.threshold = 0.05,
                 delta = 0.1)
+
+saveRDS(dmcs_delta, paste0(outdatadir, "dmcs_delta.RDS"))
+
+# Call DMCs FDR < 0.05
+dmcs_fdr <- dmlTest[dmlTest$fdr < 0.05, ]
+
+saveRDS(dmcs_delta, paste0(outdatadir, "dmcs_fdr.RDS"))
+
+# =========================================================
+# 3. 
+# =========================================================
+
 # Summary
 dmcs_delta_dt <- as.data.table(dmcs_delta)
 n_hypo_delta <- sum(dmcs_delta_dt$diff > 0)
 n_hyper_delta <- sum(dmcs_delta_dt$diff < 0)
 
-
-dmcs_fdr <- dmlTest[dmlTest$fdr < 0.05, ]
 dmcs_fdr_dt <- as.data.table(dmcs_fdr)
 n_hypo_fdr <- sum(dmcs_fdr_dt$diff > 0)
 n_hyper_fdr <- sum(dmcs_fdr_dt$diff < 0)
 
+n_hypo_all <- sum(dmlTest$diff > 0)
+n_hyper_all <- sum(dmlTest$diff < 0)
+
 dim(dmlTest)
 dim(dmcs_delta_dt)
 dim(dmcs_fdr_dt)
+
+summary_table <- data.table(
+  Dataset = c("All DMLs", "Delta-filtered DMCs", "FDR-significant DMCs"),
+  Total = c(
+    nrow(dmlTest),
+    nrow(dmcs_delta_dt),
+    nrow(dmcs_fdr_dt)
+  ),
+  Hypomethylated = c(
+    n_hypo_all,
+    n_hypo_delta,
+    n_hypo_fdr
+  ),
+  Hypermethylated = c(
+    n_hyper_all,
+    n_hyper_delta,
+    n_hyper_fdr
+  )
+)
+
+plot_dt <- melt(
+  summary_table,
+  id.vars = "Dataset",
+  measure.vars = c("Hypomethylated", "Hypermethylated"),
+  variable.name = "Type",
+  value.name = "Count"
+)
+
+p <- ggplot(plot_dt, aes(x = Dataset, y = Count, fill = Type)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9)) +
+  geom_text(
+    aes(label = Count),
+    position = position_dodge(width = 0.9),
+    vjust = -0.3,
+    size = 4
+  ) +
+  scale_y_continuous(
+    breaks = seq(0, max(plot_dt$Count) * 1.1, by = 10000),
+    expand = expansion(mult = c(0, 0.08))
+  ) +
+  theme_minimal(base_size = 14) +
+  labs(
+    title = "Differential Methylation Summary",
+    x = "Dataset",
+    y = "Number of CpGs"
+  ) +
+  scale_fill_manual(values = c(
+    "Hypomethylated" = "steelblue",
+    "Hypermethylated" = "firebrick"
+  )) +
+  theme(
+    axis.text.x = element_text(hjust = 1),
+    panel.grid.minor.y = element_line(color = "grey90"),
+    panel.grid.major.x = element_blank()
+  )
+
+ggsave(
+  "diagrams/dmc_comparison.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
 
 # =========================================================
 # 4. DSS vs Wilcoxon comparison
@@ -131,11 +219,75 @@ wilcox_dmc_analysis <- data.table(
   diff = delta
 )
 
-wilcox_dmcs <- wilcox_dmc_analysis[p_value < 0.5 & abs(diff) > 0.1]
+wilcox_dmcs <- wilcox_dmc_analysis[p_value < 0.3 & abs(diff) > 0.1]
 
-# =========================================================
+n_hypo_wilcox <- sum(wilcox_dmcs$diff > 0)
+n_hyper_wilcox <- sum(wilcox_dmcs$diff < 0)
+
+w_summary_table <- data.table(
+  Dataset = c("Delta-filtered DMCs", "FDR-significant DMCs", "Wilcoxon"),
+  Total = c(
+    nrow(dmcs_delta_dt),
+    nrow(dmcs_fdr_dt),
+    nrow(wilcox_dmcs)
+  ),
+  Hypomethylated = c(
+    n_hypo_delta,
+    n_hypo_fdr,
+    n_hypo_wilcox
+  ),
+  Hypermethylated = c(
+    n_hyper_delta,
+    n_hyper_fdr,
+    n_hyper_wilcox
+  )
+)
+
+plot_dt <- melt(
+  w_summary_table,
+  id.vars = "Dataset",
+  measure.vars = c("Hypomethylated", "Hypermethylated"),
+  variable.name = "Type",
+  value.name = "Count"
+)
+
+p <- ggplot(plot_dt, aes(x = Dataset, y = Count, fill = Type)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9)) +
+  geom_text(
+    aes(label = Count),
+    position = position_dodge(width = 0.9),
+    vjust = -0.3,
+    size = 4
+  ) +
+  scale_y_continuous(
+    breaks = seq(0, max(plot_dt$Count) * 1.1, by = 10000),
+    expand = expansion(mult = c(0, 0.08))
+  ) +
+  theme_minimal(base_size = 14) +
+  labs(
+    title = "Differential Methylation Summary",
+    x = "Dataset",
+    y = "Number of CpGs"
+  ) +
+  scale_fill_manual(values = c(
+    "Hypomethylated" = "steelblue",
+    "Hypermethylated" = "firebrick"
+  )) +
+  theme(
+    axis.text.x = element_text(hjust = 1),
+    panel.grid.minor.y = element_line(color = "grey90"),
+    panel.grid.major.x = element_blank()
+  )
+
+ggsave(
+  "diagrams/dmc_comparison_wilcoxon.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
 # Create Venn diagram
-# =========================================================
 
 library(VennDiagram)
 
@@ -157,9 +309,7 @@ venn.diagram(
   filename = "diagrams/BetaBin_vs_Wilcoxon_venn.tif"
 )
 
-# =========================================================
 # Compare methods
-# =========================================================
 
 comparison <- data.table(
   Method = c(
@@ -214,10 +364,6 @@ res4 <- callDML(
   delta = 0.2
 )
 
-# =========================================================
-# Summarize threshold exploration
-# =========================================================
-
 threshold_summary <- data.table(
 
   Threshold = c(
@@ -232,6 +378,20 @@ threshold_summary <- data.table(
     nrow(res2),
     nrow(res3),
     nrow(res4)
+  ),
+
+  Hypomethylated = c(
+    sum(res1$diff > 0),
+    sum(res2$diff > 0),
+    sum(res3$diff > 0),
+    sum(res4$diff > 0)
+  ),
+
+  Hypermethylated = c(
+    sum(res1$diff < 0),
+    sum(res2$diff < 0),
+    sum(res3$diff < 0),
+    sum(res4$diff < 0)
   )
 )
 
@@ -243,8 +403,9 @@ write.csv(
   row.names = FALSE
 )
 
-
-# Annotation
+# =========================================================
+# DMC Annotation
+# =========================================================
 
 if(!file.exists(paste0(outdatadir, "annotation_hg38.RDS"))) {
   annots <- c('hg38_genes_promoters')
@@ -339,7 +500,9 @@ write.csv(
   row.names = FALSE
 )
 
-# Enrichment
+# =========================================================
+# 6. Extract promoter DMCs only
+# =========================================================
 
 feature_counts <- dmcs_final[, .N, by = annot_type]
 feature_counts[, percentage := 100 * N / sum(N)]
@@ -396,6 +559,8 @@ enrichment_table[, log2_enrichment := log2(enrichment)]
 
 # Diagrams
 
+# Genomic features
+
 ggplot(feature_summary, aes(x = reorder(feature_category, -percentage), 
                                    y = percentage)) +
   geom_bar(stat = "identity", fill = "steelblue") +
@@ -414,6 +579,7 @@ ggsave(
   dpi = 300
 )
 
+# Enrichment
 
 ggplot(enrichment_table, aes(x = reorder(feature_category, enrichment), 
                                     y = enrichment)) +
@@ -469,13 +635,120 @@ ggsave(
   dpi = 300
 )
 
+# Hypo and hypermethylated enrichment
 
-# Volcano plot
+dmcs_hypo <- dmcs_final[diff > 0]
+dmcs_hyper <- dmcs_final[diff < 0]
+
+dmcs_hypo[, feature_category := fcase(
+  grepl("promoter", annot_type, ignore.case = TRUE), "Promoters",
+  default = "Other"
+)]
+
+dmcs_hyper[, feature_category := fcase(
+  grepl("promoter", annot_type, ignore.case = TRUE), "Promoters",
+  default = "Other"
+)]
+
+hypo_summary <- dmcs_hypo[, .N, by = feature_category]
+hypo_summary[, hypo_percentage := 100 * N / sum(N)]
+
+hyper_summary <- dmcs_hyper[, .N, by = feature_category]
+hyper_summary[, hyper_percentage := 100 * N / sum(N)]
+
+hypo_enrichment <- merge(
+  hypo_summary,
+  background_summary[, .(feature_category, bg_percentage)],
+  by = "feature_category"
+)
+
+hypo_enrichment[, enrichment := hypo_percentage / bg_percentage]
+hypo_enrichment[, log2_enrichment := log2(enrichment)]
+
+hyper_enrichment <- merge(
+  hyper_summary,
+  background_summary[, .(feature_category, bg_percentage)],
+  by = "feature_category"
+)
+
+hyper_enrichment[, enrichment := hyper_percentage / bg_percentage]
+hyper_enrichment[, log2_enrichment := log2(enrichment)]
+
+hypo_enrichment[, methylation_status := "Hypomethylated"]
+hyper_enrichment[, methylation_status := "Hypermethylated"]
+
+# Standardize column names
+setnames(hypo_enrichment,
+         c("hypo_percentage"),
+         c("percentage"))
+
+setnames(hyper_enrichment,
+         c("hyper_percentage"),
+         c("percentage"))
+
+combined_enrichment <- rbindlist(
+  list(hypo_enrichment, hyper_enrichment),
+  use.names = TRUE
+)
+
+# Hypo hyper diagram
+ggplot(
+  combined_enrichment,
+  aes(
+    x = feature_category,
+    y = enrichment,
+    fill = methylation_status
+  )
+) +
+  geom_bar(
+    stat = "identity",
+    position = position_dodge(width = 0.8)
+  ) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "black") +
+  
+  scale_fill_manual(
+    values = c(
+      "Hypomethylated" = "#E64B35",
+      "Hypermethylated" = "#4DBBD5"
+    )
+  ) +
+  
+  geom_text(
+    aes(label = round(enrichment, 2)),
+    position = position_dodge(width = 0.8),
+    vjust = -0.3,
+    size = 3.5
+  ) +
+  
+  coord_flip() +
+  
+  labs(
+    title = "DMC Enrichment in Promoters: Hypo vs Hypermethylated",
+    x = "Genomic Feature",
+    y = "Enrichment (Observed / Expected)",
+    fill = ""
+  ) +
+  
+  theme_bw() +
+  theme(
+    legend.position = "top"
+  )
+
+ggsave(
+  filename = "diagrams/dmc_enrichment_hyper_hypo.png",
+  width = 8,
+  height = 6,
+  dpi = 300
+)
+
+# =========================================================
+# 7. Volcano plot
+# =========================================================
 
 volcano_data <- copy(dmcs_final)
 volcano_data[, neg_log_fdr := -log10(fdr)]
 
-p <- ggplot(volcano_data, aes(x = diff, y = neg_log_fdr, color = direction)) +
+p <- ggplot(volcano_data, aes(x = -diff, y = neg_log_fdr, color = direction)) +
   geom_point(alpha = 0.6, size = 1) +
   scale_color_manual(values = c("Hypermethylated" = "#E64B35",
                                 "Hypomethylated" = "#4DBBD5")) +
@@ -496,12 +769,14 @@ ggsave(
   dpi = 300
 )
 
-# MA-equivalent plot
+# =========================================================
+# 8. MA-equivalent
+# =========================================================
 
 ma_data <- copy(dmcs_final)
 ma_data[, avg_meth := (mu1 + mu2) / 2]
 
-p <- ggplot(ma_data, aes(x = avg_meth, y = diff, color = direction)) +
+p <- ggplot(ma_data, aes(x = avg_meth, y = -diff, color = direction)) +
   geom_point(alpha = 0.6, size = 1) +
   scale_color_manual(values = c("Hypermethylated" = "#E64B35",
                                 "Hypomethylated" = "#4DBBD5")) +
@@ -520,7 +795,13 @@ ggsave(
   dpi = 300
 )
 
+# ---------------------------------------------------------
 # DMR calling
+# ---------------------------------------------------------
+
+# =========================================================
+# 1. Test at least 3 parameter sets 
+# =========================================================
 
 dmrs <- callDMR(dmlTest, minCG=3, minlen=50, p.threshold=0.05)
 dmrs2 <- callDMR(dmlTest, minCG=5, minlen=100, p.threshold=0.01)
@@ -544,7 +825,63 @@ write.csv(
   row.names = FALSE
 )
 
-# Characterize your DMRs
+
+extract_dmr_stats <- function(dmrs_obj, label) {
+  
+  df <- as.data.frame(dmrs_obj)
+
+  df$length <- df$end - df$start 
+  df$cpg_density <- df$nCG / df$length
+  
+  summary_df <- data.frame(
+    method = label,
+    n_DMRs = nrow(df),
+    mean_length = mean(df$length, na.rm = TRUE),
+    median_length = median(df$length, na.rm = TRUE),
+    mean_CpG = mean(df$nCG, na.rm = TRUE),
+    mean_density = mean(df$cpg_density, na.rm = TRUE)
+  )
+  
+  return(summary_df)
+}
+
+s1 <- extract_dmr_stats(dmrs,  "minCG=3,p=0.05")
+s2 <- extract_dmr_stats(dmrs2, "minCG=5,p=0.01")
+s3 <- extract_dmr_stats(dmrs3, "minCG=7,p=0.01")
+
+summary_table <- bind_rows(s1, s2, s3)
+
+
+ggplot(summary_table, aes(x = method, y = n_DMRs)) +
+  geom_col() +
+  theme_minimal() +
+  labs(title = "Number of DMRs by parameter sets",
+       x = "Parameter set", y = "Number of DMRs")
+
+ggsave("diagrams/dmr_param_sets.png", width = 7, height = 5, dpi = 300)
+
+
+all_df <- bind_rows(
+  transform(dmrs, method = "minCG=3,p=0.05"),
+  transform(dmrs2, method = "minCG=5,p=0.01"),
+  transform(dmrs3, method = "minCG=7,p=0.01")
+)
+
+all_df$length <- all_df$end - all_df$start
+
+ggplot(all_df, aes(x = method, y = length)) +
+  geom_boxplot() +
+  theme_minimal() +
+  scale_y_continuous(breaks = seq(0, 10000, by = 1000)) +
+  labs(title = "DMR length distribution by parameter set",
+       y = "Length (bp)",
+       x = "Parameter set")
+
+ggsave("diagrams/dmr_param_sets_lengths.png", width = 7, height = 5, dpi = 300)
+
+# =========================================================
+# 2. Characterize your DMRs
+# =========================================================
 
 library(dplyr)
 
@@ -585,7 +922,7 @@ ggplot(dmrs_char, aes(x = nCG)) +
   scale_x_continuous(
     breaks = seq(0, max(dmrs$nCG, na.rm = TRUE), by = 1)
   ) +
-  scale_y_continuous(breaks = seq(0, 1000, by = 10)) +
+  scale_y_continuous(breaks = seq(0, 1000, by = 100)) +
   labs(
     title = "CpGs per DMR Distribution",
     x = "Number of CpGs per DMR",
@@ -628,12 +965,22 @@ ggsave("diagrams/hyper_vs_hypo_dmrs.png",
 
 ggplot(dmrs_char, aes(x = start, color = chr)) +
   geom_density() +
+  scale_x_continuous(
+    breaks = seq(0, max(dmrs$start, na.rm = TRUE), by = 5000000)
+  )  +
   labs(
     title = "DMR Density Across Genome",
     x = "Genomic Position",
     y = "Density"
   ) +
-  theme_bw()
+  theme_bw()+
+  theme(
+    axis.text.x = element_text(
+      angle = 90,
+      vjust = 0.5,
+      hjust = 1
+    )
+  )
 
 ggsave("diagrams/dmr_density_genome.png",
        width = 8,
@@ -657,9 +1004,15 @@ ggsave("diagrams/dmr_length_vs_effect.png",
        height = 5,
        dpi = 300)
 
+# =========================================================
+# 3. Save a list of DMRs 
+# =========================================================
+
 saveRDS(dmrs_char, paste0(outdatadir, "dmrs_char.RDS"))
 
-# Compare DMCs and DMRs
+# =========================================================
+# 4. Compare DMCs and DMRs
+# =========================================================
 
 library(GenomicRanges)
 
@@ -684,10 +1037,70 @@ frac_in_dmrs <- length(dmc_in_dmrs) / length(dmc_gr)
 # Number of DMCs inside DMRs
 length(dmc_in_dmrs)
 
+# Pie chart
+in_dmrs <- length(dmc_in_dmrs)
+not_in_dmrs <- length(dmc_gr) - in_dmrs
+
+pie_df <- data.frame(
+  category = c("Inside DMRs", "Outside DMRs"),
+  count = c(in_dmrs, not_in_dmrs)
+)
+
+pie_df$fraction <- pie_df$count / sum(pie_df$count)
+
+pie_df$label <- paste0(
+  pie_df$category,
+  "\nN = ", pie_df$count,
+  "\n(", round(pie_df$fraction * 100, 1), "%)"
+)
+
+ggplot(pie_df, aes(x = "", y = count, fill = category)) +
+  geom_col(width = 1, color = "white") +
+  coord_polar(theta = "y") +
+  geom_text(aes(label = label),
+            position = position_stack(vjust = 0.5),
+            size = 4) +
+  theme_bw() +
+  theme(
+    panel.border = element_blank()
+  ) +
+  labs(title = "Fraction of DMCs Inside DMRs")
+
+ggsave("diagrams/dmc_fraction_in_dmrs.png",
+       width = 6,
+       height = 6,
+       dpi = 300)
+
 # Isolated DMRs
 dmr_with_dmc <- unique(subjectHits(hits))
 isolated_dmrs <- setdiff(seq_along(dmrs$chr), dmr_with_dmc)
 length(isolated_dmrs)
+
+bar_df <- data.frame(
+  category = c("DMRs with DMCs", "Isolated DMRs"),
+  count = c(length(dmr_with_dmc), length(isolated_dmrs))
+)
+
+# Barplot
+ggplot(bar_df, aes(x = category, y = count, fill = category)) +
+  geom_col(width = 0.7) +
+  geom_text(aes(label = count),
+            vjust = -0.3,
+            size = 5) +
+  theme_bw() +
+  theme(
+    legend.position = "none"
+  ) +
+  labs(
+    title = "Comparison of DMR Categories",
+    x = "",
+    y = "Number of DMRs"
+  )
+
+ggsave("diagrams/isolated_dmrs_barplot.png",
+       width = 8,
+       height = 6,
+       dpi = 300)
 
 # Plot fraction
 df <- data.frame(
@@ -834,7 +1247,7 @@ ggplot(dmrs_promoters_feature_summary, aes(x = reorder(feature_category, -percen
             vjust = -0.5, size = 3.5) +
   labs(title = "DMR Total Length Distribution across Genomic Features",
        x = "Genomic Feature",
-       y = "Percentage of DMCs (%)") +
+       y = "Percentage of DMRs (%)") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
@@ -884,9 +1297,9 @@ ggplot(promoters_feature_by_direction, aes(x = feature_category, y = percentage,
   geom_text(aes(label = paste0(round(percentage, 1), "%")),
             position = position_dodge(width = 0.9),
             vjust = -0.5, size = 3) +
-  labs(title = "Promoter Preferences: Hyper vs Hypo DMCs",
+  labs(title = "Promoter Preferences: Hyper vs Hypo DMRs",
        x = "Genomic Feature",
-       y = "Percentage of DMCs (%)",
+       y = "Percentage of DMRs (%)",
        fill = "Direction") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
@@ -989,7 +1402,7 @@ ggplot(dmrs_cgi_feature_summary, aes(x = reorder(feature_category, -percentage),
             vjust = -0.5, size = 3.5) +
   labs(title = "DMR Total Length Distribution across Genomic Features",
        x = "Genomic Feature",
-       y = "Percentage of DMCs (%)") +
+       y = "Percentage of DMRs (%)") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
@@ -1038,9 +1451,9 @@ ggplot(cgi_feature_by_direction, aes(x = feature_category, y = percentage,
   geom_text(aes(label = paste0(round(percentage, 1), "%")),
             position = position_dodge(width = 0.9),
             vjust = -0.5, size = 3) +
-  labs(title = "CGI Preferences: Hyper vs Hypo DMCs",
+  labs(title = "CGI Preferences: Hyper vs Hypo DMRs",
        x = "Genomic Feature",
-       y = "Percentage of DMCs (%)",
+       y = "Percentage of DMR Total Length (%)",
        fill = "Direction") +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
@@ -1053,7 +1466,10 @@ ggsave(
   dpi = 300
 )
 
-# Plot 5: Heatmap of topN DMC
+
+# =========================================================
+# 5. Heatmap of topN DMC
+# =========================================================
 
 dmcs_top100 <- dmcs_final[order(fdr)][1:100]
 dmcs_top100[, cpg_id := paste(chr, pos, sep = ":")]
@@ -1105,7 +1521,15 @@ dev.off()
 
 p_load(clusterProfiler)
 
-# Functional enrichment - Hypermethylated DMCs VS hypomethylated DMCs
+# ---------------------------------------------------------
+# Biological interpretation
+# ---------------------------------------------------------
+
+# =========================================================
+# 1. Perform functional enrichment analysis 
+# =========================================================
+
+# Hypermethylated DMCs VS hypomethylated DMCs
 
 hyper_genes <- unique(dmcs_final[direction == "Hypermethylated", gene_id])
 hyper_genes <- hyper_genes[!is.na(hyper_genes)]
@@ -1124,11 +1548,11 @@ go_hyper <- enrichGO(gene = hyper_genes,
                   qvalueCutoff = 0.2,
                   readable = TRUE)
 
-png("diagrams/hyper_go_barplot.png", width = 1000, height = 800)
+png("diagrams/bio_enrichment/hyper_go_barplot.png", width = 1000, height = 800)
 barplot(go_hyper, showCategory = 20, title = "Hypermethylated CpG - Top GO terms")
 dev.off()
 
-png("diagrams/hyper_go_dotplot.png", width = 1000, height = 800)
+png("diagrams/bio_enrichment/hyper_go_dotplot.png", width = 1000, height = 800)
 dotplot(go_hyper, showCategory = 20, title = "Hypermethylated CpG - GO Enrichment Dotplot")
 dev.off()
 
@@ -1141,11 +1565,11 @@ go_hypo <- enrichGO(gene = hypo_genes,
                   qvalueCutoff = 0.2,
                   readable = TRUE)
 
-png("diagrams/hypo_go_barplot.png", width = 1000, height = 800)
+png("diagrams/bio_enrichment/hypo_go_barplot.png", width = 1000, height = 800)
 barplot(go_hypo, showCategory = 20, title = "Hypomethylated CpG - Top GO terms")
 dev.off()
 
-png("diagrams/hypo_go_dotplot.png", width = 1000, height = 800)
+png("diagrams/bio_enrichment/hypo_go_dotplot.png", width = 1000, height = 800)
 dotplot(go_hypo, showCategory = 20, title = "Hypomethylated CpG - GO Enrichment Dotplot")
 dev.off()
 
@@ -1160,7 +1584,7 @@ kegg_hyper <- enrichKEGG(gene = hyper_genes,
 p <- barplot(kegg_hyper, showCategory = 20, title = "Hypermethylated CpG - Top KEGG terms")
 
 ggsave(
-  "diagrams/hyper_kegg_barplot.png",
+  "diagrams/bio_enrichment/hyper_kegg_barplot.png",
   plot = p,
   width = 10,
   height = 8,
@@ -1170,7 +1594,7 @@ ggsave(
 p <- dotplot(kegg_hyper, showCategory = 20, title = "Hypermethylated CpG - KEGG Enrichment Dotplot")
 
 ggsave(
-  "diagrams/hyper_kegg_dotplot.png",
+  "diagrams/bio_enrichment/hyper_kegg_dotplot.png",
   plot = p,
   width = 10,
   height = 8,
@@ -1187,7 +1611,7 @@ kegg_hypo <- enrichKEGG(gene = hypo_genes,
 p <- barplot(kegg_hypo, showCategory = 20, title = "Hypomethylated CpG - Top KEGG terms")
 
 ggsave(
-  "diagrams/hypo_kegg_barplot.png",
+  "diagrams/bio_enrichment/hypo_kegg_barplot.png",
   plot = p,
   width = 10,
   height = 8,
@@ -1197,7 +1621,7 @@ ggsave(
 p <- dotplot(kegg_hypo, showCategory = 20, title = "Hypomethylated CpG - KEGG Enrichment Dotplot")
 
 ggsave(
-  "diagrams/hypo_kegg_dotplot.png",
+  "diagrams/bio_enrichment/hypo_kegg_dotplot.png",
   plot = p,
   width = 10,
   height = 8,
@@ -1227,7 +1651,7 @@ go_promoter <- enrichGO(gene = promoter_genes,
 
 p <- barplot(go_hyper, showCategory = 20, title = "Promoter DMR associated genes - Top GO terms")
 ggsave(
-  "diagrams/promoter_go_barplot.png",
+  "diagrams/bio_enrichment/promoter_go_barplot.png",
   plot = p,
   width = 10,
   height = 8,
@@ -1236,7 +1660,7 @@ ggsave(
 
 p <- dotplot(go_hyper, showCategory = 20, title = "Promoter DMR associated genes - GO Enrichment Dotplot")
 ggsave(
-  "diagrams/promoter_go_dotplot.png",
+  "diagrams/bio_enrichment/promoter_go_dotplot.png",
   plot = p,
   width = 10,
   height = 8,
@@ -1252,18 +1676,18 @@ go_all <- enrichGO(gene = all_genes,
                   qvalueCutoff = 0.2,
                   readable = TRUE)
 
-barplot(go_all, showCategory = 20, title = "All DMR associated genes - Top GO terms")
+p <- barplot(go_all, showCategory = 20, title = "All DMR associated genes - Top GO terms")
 ggsave(
-  "diagrams/all_go_barplot.png",
+  "diagrams/bio_enrichment/all_go_barplot.png",
   plot = p,
   width = 10,
   height = 8,
   dpi = 300
 )
 
-dotplot(go_all, showCategory = 20, title = "All DMR associated genes - GO Enrichment Dotplot")
+p <- dotplot(go_all, showCategory = 20, title = "All DMR associated genes - GO Enrichment Dotplot")
 ggsave(
-  "diagrams/all_go_dotplot.png",
+  "diagrams/bio_enrichment/all_go_dotplot.png",
   plot = p,
   width = 10,
   height = 8,
@@ -1281,7 +1705,7 @@ kegg_promoter <- enrichKEGG(gene = promoter_genes,
 p <- barplot(kegg_promoter, showCategory = 20, title = "Promoter DMR associated genes - Top KEGG terms")
 
 ggsave(
-  "diagrams/promoter_kegg_barplot.png",
+  "diagrams/bio_enrichment/promoter_kegg_barplot.png",
   plot = p,
   width = 10,
   height = 8,
@@ -1291,7 +1715,7 @@ ggsave(
 p <- dotplot(kegg_promoter, showCategory = 20, title = "Promoter DMR associated genes - KEGG Enrichment Dotplot")
 
 ggsave(
-  "diagrams/promoter_kegg_dotplot.png",
+  "diagrams/bio_enrichment/promoter_kegg_dotplot.png",
   plot = p,
   width = 10,
   height = 8,
@@ -1308,7 +1732,7 @@ kegg_all <- enrichKEGG(gene = all_genes,
 p <- barplot(kegg_all, showCategory = 20, title = "All DMR associated genes - Top KEGG terms")
 
 ggsave(
-  "diagrams/all_kegg_barplot.png",
+  "diagrams/bio_enrichment/all_kegg_barplot.png",
   plot = p,
   width = 10,
   height = 8,
@@ -1318,7 +1742,7 @@ ggsave(
 p <- dotplot(kegg_all, showCategory = 20, title = "All DMR associated genes - KEGG Enrichment Dotplot")
 
 ggsave(
-  "diagrams/all_kegg_dotplot.png",
+  "diagrams/bio_enrichment/all_kegg_dotplot.png",
   plot = p,
   width = 10,
   height = 8,

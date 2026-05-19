@@ -1,0 +1,6 @@
+INFO [2026-05-19 13:40:00] $x
+INFO [2026-05-19 13:40:00] list(Beta_binomial = beta_binomial_sites, Wilcoxon = wilcox_sites)
+INFO [2026-05-19 13:40:00] 
+INFO [2026-05-19 13:40:00] $filename
+INFO [2026-05-19 13:40:00] [1] "diagrams/BetaBin_vs_Wilcoxon_venn.tif"
+INFO [2026-05-19 13:40:00] 

@@ -1,5 +1,5 @@
-"Threshold","Num_DMCs"
-"p<0.05, delta>0.1",26782
-"p<0.01, delta>0.1",12243
-"p<0.05, delta>0.2",12519
-"p<0.01, delta>0.2",5030
+"Threshold","Num_DMCs","Hypomethylated","Hypermethylated"
+"p<0.05, delta>0.1",26782,26464,318
+"p<0.01, delta>0.1",12243,12145,98
+"p<0.05, delta>0.2",12519,12425,94
+"p<0.01, delta>0.2",5030,4998,32
