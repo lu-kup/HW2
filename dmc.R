@@ -1526,7 +1526,7 @@ p_load(clusterProfiler)
 # ---------------------------------------------------------
 
 # =========================================================
-# 1. Perform functional enrichment analysis 
+# 2. Compare and describe enrichment results 
 # =========================================================
 
 # Hypermethylated DMCs VS hypomethylated DMCs
@@ -1649,7 +1649,7 @@ go_promoter <- enrichGO(gene = promoter_genes,
                   qvalueCutoff = 0.2,
                   readable = TRUE)
 
-p <- barplot(go_hyper, showCategory = 20, title = "Promoter DMR associated genes - Top GO terms")
+p <- barplot(go_promoter, showCategory = 20, title = "Promoter DMR associated genes - Top GO terms")
 ggsave(
   "diagrams/bio_enrichment/promoter_go_barplot.png",
   plot = p,
@@ -1658,7 +1658,7 @@ ggsave(
   dpi = 300
 )
 
-p <- dotplot(go_hyper, showCategory = 20, title = "Promoter DMR associated genes - GO Enrichment Dotplot")
+p <- dotplot(go_promoter, showCategory = 20, title = "Promoter DMR associated genes - GO Enrichment Dotplot")
 ggsave(
   "diagrams/bio_enrichment/promoter_go_dotplot.png",
   plot = p,
@@ -1743,6 +1743,232 @@ p <- dotplot(kegg_all, showCategory = 20, title = "All DMR associated genes - KE
 
 ggsave(
   "diagrams/bio_enrichment/all_kegg_dotplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+
+# =========================================================
+# 3. Enrichment results obtained from the same type 
+# =========================================================
+
+# Functional enrichment - Promoter DMCs VS All DMCs
+
+promoter_dmcs <- dmcs_final[grepl("promoter", annot_type, ignore.case = TRUE)]
+promoter_genes_dmcs <- unique(promoter_dmcs$gene_id)
+promoter_genes_dmcs <- promoter_genes_dmcs[!is.na(promoter_genes_dmcs)]
+
+all_genes_dmcs <- unique(dmcs_final$gene_id)
+all_genes_dmcs <- all_genes_dmcs[!is.na(all_genes_dmcs)]
+
+# GO Enrichment Analysis
+
+go_promoter_dmcs <- enrichGO(gene = promoter_genes_dmcs,
+                  OrgDb = org.Hs.eg.db,
+                  keyType = "ENTREZID",
+                  ont = "BP",
+                  pAdjustMethod = "BH",
+                  pvalueCutoff = 0.05,
+                  qvalueCutoff = 0.2,
+                  readable = TRUE)
+
+p <- barplot(go_promoter_dmcs, showCategory = 20, title = "Promoter DMC associated genes - Top GO terms")
+ggsave(
+  "diagrams/bio_enrichment/opposite/promoter_go_barplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+p <- dotplot(go_promoter_dmcs, showCategory = 20, title = "Promoter DMC associated genes - GO Enrichment Dotplot")
+ggsave(
+  "diagrams/bio_enrichment/opposite/promoter_go_dotplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+go_all_dmcs <- enrichGO(gene = all_genes_dmcs,
+                  OrgDb = org.Hs.eg.db,
+                  keyType = "ENTREZID",
+                  ont = "BP",
+                  pAdjustMethod = "BH",
+                  pvalueCutoff = 0.05,
+                  qvalueCutoff = 0.2,
+                  readable = TRUE)
+
+p <- barplot(go_all_dmcs, showCategory = 20, title = "All DMC associated genes - Top GO terms")
+ggsave(
+  "diagrams/bio_enrichment/opposite/all_go_barplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+p <- dotplot(go_all_dmcs, showCategory = 20, title = "All DMC associated genes - GO Enrichment Dotplot")
+ggsave(
+  "diagrams/bio_enrichment/opposite/all_go_dotplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+# KEGG Enrichment Analysis
+
+kegg_promoter_dmcs <- enrichKEGG(gene = promoter_genes_dmcs,
+                   organism = "hsa",
+                   pAdjustMethod = "BH",
+                   pvalueCutoff = 0.05,
+                   qvalueCutoff = 0.2)
+
+p <- barplot(kegg_promoter_dmcs, showCategory = 20, title = "Promoter DMC associated genes - Top KEGG terms")
+
+ggsave(
+  "diagrams/bio_enrichment/opposite/promoter_kegg_barplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+p <- dotplot(kegg_promoter_dmcs, showCategory = 20, title = "Promoter DMC associated genes - KEGG Enrichment Dotplot")
+
+ggsave(
+  "diagrams/bio_enrichment/opposite/promoter_kegg_dotplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+
+kegg_all_dmcs <- enrichKEGG(gene = all_genes_dmcs,
+                   organism = "hsa",
+                   pAdjustMethod = "BH",
+                   pvalueCutoff = 0.05,
+                   qvalueCutoff = 0.2)
+
+p <- barplot(kegg_all_dmcs, showCategory = 20, title = "All DMC associated genes - Top KEGG terms")
+
+ggsave(
+  "diagrams/bio_enrichment/opposite/all_kegg_barplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+p <- dotplot(kegg_all_dmcs, showCategory = 20, title = "All DMC associated genes - KEGG Enrichment Dotplot")
+
+ggsave(
+  "diagrams/bio_enrichment/opposite/all_kegg_dotplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+
+
+# Hypermethylated DMRs VS hypomethylated DMRs
+
+hyper_genes_dmr <- unique(dmrs_final_promoters[direction == "Hypermethylated", gene_id])
+hyper_genes_dmr <- hyper_genes_dmr[!is.na(hyper_genes_dmr)]
+
+hypo_genes_dmr <- unique(dmrs_final_promoters[direction == "Hypomethylated", gene_id])
+hypo_genes_dmr <- hypo_genes_dmr[!is.na(hypo_genes_dmr)]
+
+# GO Enrichment Analysis
+
+go_hyper_dmr <- enrichGO(gene = hyper_genes_dmr,
+                  OrgDb = org.Hs.eg.db,
+                  keyType = "ENTREZID",
+                  ont = "BP",
+                  pAdjustMethod = "BH",
+                  pvalueCutoff = 0.05,
+                  qvalueCutoff = 0.2,
+                  readable = TRUE)
+
+png("diagrams/bio_enrichment/opposite/hyper_go_barplot.png", width = 1000, height = 800)
+barplot(go_hyper_dmr, showCategory = 20, title = "Hypermethylated DMR - Top GO terms")
+dev.off()
+
+png("diagrams/bio_enrichment/opposite/hyper_go_dotplot.png", width = 1000, height = 800)
+dotplot(go_hyper_dmr, showCategory = 20, title = "Hypermethylated DMR - GO Enrichment Dotplot")
+dev.off()
+
+go_hypo_dmr <- enrichGO(gene = hypo_genes_dmr,
+                  OrgDb = org.Hs.eg.db,
+                  keyType = "ENTREZID",
+                  ont = "BP",
+                  pAdjustMethod = "BH",
+                  pvalueCutoff = 0.05,
+                  qvalueCutoff = 0.2,
+                  readable = TRUE)
+
+png("diagrams/bio_enrichment/opposite/hypo_go_barplot.png", width = 1000, height = 800)
+barplot(go_hypo_dmr, showCategory = 20, title = "Hypomethylated DMR - Top GO terms")
+dev.off()
+
+png("diagrams/bio_enrichment/opposite/hypo_go_dotplot.png", width = 1000, height = 800)
+dotplot(go_hypo_dmr, showCategory = 20, title = "Hypomethylated DMR - GO Enrichment Dotplot")
+dev.off()
+
+# KEGG Enrichment Analysis
+
+kegg_hyper_dmr <- enrichKEGG(gene = hyper_genes_dmr,
+                   organism = "hsa",
+                   pAdjustMethod = "BH",
+                   pvalueCutoff = 0.05,
+                   qvalueCutoff = 0.2)
+
+p <- barplot(kegg_hyper_dmr, showCategory = 20, title = "Hypermethylated DMR - Top KEGG terms")
+
+ggsave(
+  "diagrams/bio_enrichment/opposite/hyper_kegg_barplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+p <- dotplot(kegg_hyper_dmr, showCategory = 20, title = "Hypermethylated DMR - KEGG Enrichment Dotplot")
+
+ggsave(
+  "diagrams/bio_enrichment/opposite/hyper_kegg_dotplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+
+kegg_hypo_dmr <- enrichKEGG(gene = hypo_genes_dmr,
+                   organism = "hsa",
+                   pAdjustMethod = "BH",
+                   pvalueCutoff = 0.05,
+                   qvalueCutoff = 0.2)
+
+p <- barplot(kegg_hypo_dmr, showCategory = 20, title = "Hypomethylated DMR - Top KEGG terms")
+
+ggsave(
+  "diagrams/bio_enrichment/opposite/hypo_kegg_barplot.png",
+  plot = p,
+  width = 10,
+  height = 8,
+  dpi = 300
+)
+
+p <- dotplot(kegg_hypo_dmr, showCategory = 20, title = "Hypomethylated DMR - KEGG Enrichment Dotplot")
+
+ggsave(
+  "diagrams/bio_enrichment/opposite/hypo_kegg_dotplot.png",
   plot = p,
   width = 10,
   height = 8,
