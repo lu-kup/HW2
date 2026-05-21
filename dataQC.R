@@ -1,8 +1,6 @@
 library(data.table)
 library(tidyverse)
 
-
-
 sample_cols <- setdiff(colnames(coverage_dt), c("cpg_id", "chr", "position"))
 
 coverage_long <- coverage_dt %>%
